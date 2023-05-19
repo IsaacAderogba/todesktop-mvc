@@ -1,6 +1,13 @@
 import { emptyItemQuery } from "./item";
 import Store from "./store";
 import View from "./view";
+import {
+  registerShortcut,
+  unregisterShortcut,
+} from "@todesktop/client-selected-text";
+import { getActiveWin } from "@todesktop/client-active-win";
+import { extractIcon } from "@todesktop/client-get-app-icon";
+import { app } from "@todesktop/client-core";
 
 export default class Controller {
   /**
@@ -8,6 +15,31 @@ export default class Controller {
    * @param  {!View} view A View instance
    */
   constructor(store, view) {
+    app.once("bindToDesktopPlugins", (reset) => {
+      registerShortcut("CommandOrControl+Shift+.", async (text) => {
+        const selectedText = text.trim();
+
+        if (selectedText) {
+          const { owner } = await getActiveWin();
+          const icon = await extractIcon(owner.path);
+
+          app.focus({ steal: true });
+          this.addItem(`Review ${selectedText}`, icon);
+        }
+      });
+
+      new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          window.resizeTo(entry.contentRect.width, entry.contentRect.height);
+        }
+      }).observe(document.querySelector('body'));
+
+      window.addEventListener('unload', () => {
+        unregisterShortcut('CommandOrControl+Shift+.');
+        reset();
+      });
+    });
+
     this.store = store;
     this.view = view;
 
@@ -43,11 +75,12 @@ export default class Controller {
    *
    * @param {!string} title Title of the new item
    */
-  addItem(title) {
+  addItem(title, icon) {
     this.store.insert(
       {
         id: Date.now(),
         title,
+        icon,
         completed: false,
       },
       () => {
@@ -157,6 +190,8 @@ export default class Controller {
     }
 
     this.store.count((total, active, completed) => {
+      app.setBadgeCount(active);
+
       this.view.setItemsLeft(active);
       this.view.setClearCompletedButtonVisibility(completed);
 
